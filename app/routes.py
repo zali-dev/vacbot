@@ -204,19 +204,12 @@ def delete_card(vacancy_id: str):
 
     return jsonify({"ok": True, "id": vacancy_id, "deleted": True})
 
-@main.route("/api/run-parser", methods=["POST"])
-def run_parser():
+# Находим роут @main.route("/api/run-parser", methods=["POST"]) и заменяем его целиком:
+
+def _async_parser_task():
+    """Внутренняя функция для выполнения парсинга в фоновом потоке"""
     global parser_running
-
-    if parser_running:
-        return jsonify({
-            "ok": False,
-            "error": "Парсер уже выполняется"
-        }), 409
-
     try:
-        parser_running = True
-
         import sys
         import json
         from pathlib import Path
@@ -227,42 +220,51 @@ def run_parser():
         from src.fetcher import collect_all
         from src.services.vacancy_storage import save_to_database
 
-        print("🚀 Запуск парсинга через /api/run-parser")
-
+        print("🚀 Фоновый поток: Запуск сбора вакансий...")
         vacancies = collect_all()
 
         if vacancies:
             save_to_database(vacancies)
 
-            with open(
-                'data/vacancies.json',
-                'w',
-                encoding='utf-8'
-            ) as f:
-                json.dump(
-                    vacancies,
-                    f,
-                    ensure_ascii=False,
-                    indent=2
-                )
-
-        return jsonify({
-            "ok": True,
-            "message": f"Парсер завершен. Найдено {len(vacancies)} вакансий",
-            "total": len(vacancies)
-        })
+            with open('data/vacancies.json', 'w', encoding='utf-8') as f:
+                json.dump(vacancies, f, ensure_ascii=False, indent=2)
+        
+        print(f"✅ Фоновый поток: Парсинг успешно завершен. Найдено {len(vacancies)} вакансий")
 
     except Exception as e:
         import traceback
+        print("❌ Фоновый поток: Произошла критическая ошибка!")
         traceback.print_exc()
+    finally:
+        # В самом конце обязательно освобождаем флаг запуска
+        parser_running = False
 
+
+@main.route("/api/run-parser", methods=["POST"])
+def run_parser():
+    global parser_running
+
+    # Если парсер уже запущен в фоне — сразу сообщаем об этом
+    if parser_running:
         return jsonify({
             "ok": False,
-            "error": str(e)
-        }), 500
+            "error": "Парсер уже выполняется в фоновом режиме"
+        }), 409
 
-    finally:
-        parser_running = False
+    # Включаем флаг активности перед стартом потока
+    parser_running = True
+
+    # Запускаем сборщик вакансий в отдельном асинхронном потоке
+    thread = threading.Thread(target=_async_parser_task)
+    thread.daemon = True  # Поток автоматически закроется, если сервер выключится
+    thread.start()
+
+    # Мгновенно возвращаем JSON ответ клиенту, не дожидаясь окончания парсинга!
+    return jsonify({
+        "ok": True,
+        "message": "Парсинг успешно запущен в фоновом режиме. Карточки будут появляться по мере сбора."
+    })
+
 
 @main.route("/api/stats")
 def stats():
