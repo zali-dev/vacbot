@@ -9,3 +9,7 @@ entrypoint = "run_web:app"
 
 [tool.uv]
 requirements-txt = ["requirements.txt"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
