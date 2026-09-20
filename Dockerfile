@@ -33,22 +33,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrandr2 \
     libxrender1 \
     libasound2 \
+    libgbm1 \
     shared-mime-info \
     && rm -rf /var/lib/apt/lists/*
 
-# Копия только requirements.txt для эффективного кэширования слоёв Docker
+# Копируем только requirements.txt для эффективного кэширования слоёв Docker
 COPY requirements.txt .
 
-# Установка всех зависимостей (включая playwright)
+# Устанавливаем все зависимости
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Устанавливаем Chromium в нашу фиксированную системную папку /ms-playwright
 RUN playwright install chromium
 
-# Копия всего остального кода проекта
+# Копируем весь остальной код проекта
 COPY . .
 
-# Папка для данных (если бот пишет туда локальные файлы)
+# Создаём папку для данных
 RUN mkdir -p /app/data
 
 # Команда запуска для Render
